@@ -1,5 +1,5 @@
 import sys
-import copy
+import itertools as itool
 from graphics import *
 import random
 import numpy as np
@@ -35,7 +35,7 @@ class Mover():
         self.move()
 
     def fitness(self):
-        return np.linalg.norm(self.goal - self.position())
+        return 1.0 / np.linalg.norm(self.goal - self.position())
 
     def position(self):
         center = self.circle.getCenter()
@@ -100,15 +100,29 @@ class Mover():
 
     @staticmethod
     def selection(movers):
-        fitness = [(i, x.fitness()) for i, x in enumerate(movers)]
+        fitness = np.array(
+                [np.array([i, x.fitness()]) 
+                    for i, x in enumerate(movers)])
+
         sumFitness = sum([x.fitness() for x in movers])
+
         avgFitness = sumFitness / len(movers)
+        #normalized = [[i, fit/sumFitness] for i, fit in fitness]
+
+        fitness[:,1] /= sumFitness
+
+        normDesc = np.array(
+                sorted(fitness, key=lambda x: x[1], reverse=True))
+
+        print(normDesc[:,1])
+        # Accumulated values
+        acc = itool.accumulate(normDesc[1,:])
+        for x in acc:
+            print(x)
 
         indexPool = []
         for i, fit in fitness:
             indexPool.extend([i] * int(avgFitness/fit))
-
-        print('Index pool size: ', len(indexPool))
 
         first = random.choice(indexPool)
         second = random.choice(indexPool)
@@ -180,7 +194,7 @@ def main():
 
     random.seed()
 
-    animalNum = 100
+    animalNum = 10
     animalSize = 5
 
     startX = width * fieldMin + 10 
