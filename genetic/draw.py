@@ -69,7 +69,7 @@ class Mover():
     @staticmethod
     def reproduce(movers):
         newGeneration = []
-        for i in range(len(movers)):
+        for i in range(int(len(movers)/2)):
             parents = Mover.selection(movers)
             child1, child2 = Mover.crossover(parents)
 
@@ -101,36 +101,37 @@ class Mover():
     @staticmethod
     def selection(movers):
         fitness = np.array(
-                [np.array([i, x.fitness()]) 
-                    for i, x in enumerate(movers)])
+                [np.array([i, x.fitness()]) for i, x in enumerate(movers)])
 
         sumFitness = sum([x.fitness() for x in movers])
 
-        avgFitness = sumFitness / len(movers)
-        #normalized = [[i, fit/sumFitness] for i, fit in fitness]
-
+        # Normalization of values
         fitness[:,1] /= sumFitness
 
+        # Sorted by normalized fitness values
         normDesc = np.array(
                 sorted(fitness, key=lambda x: x[1], reverse=True))
 
-        print(normDesc[:,1])
         # Accumulated values
-        acc = itool.accumulate(normDesc[1,:])
-        for x in acc:
-            print(x)
+        acc = itool.accumulate(normDesc[:,1])
 
-        indexPool = []
-        for i, fit in fitness:
-            indexPool.extend([i] * int(avgFitness/fit))
+        for i, newValue in enumerate(acc):
+            normDesc[i][1] = newValue 
 
-        first = random.choice(indexPool)
-        second = random.choice(indexPool)
+        select1 = random.uniform(0, 1)
+        select2 = random.uniform(0, 1)
 
-        while first == second:
-            second = random.choice(indexPool)
+        index1 = int(Mover.select_from_pool(normDesc, select1))
+        index2 = int(Mover.select_from_pool(normDesc, select2))
 
-        return movers[first], movers[second]
+        return movers[index1], movers[index2]
+
+    @staticmethod
+    def select_from_pool(pool, selection):
+        for x in pool:
+            if x[1] >= selection:
+                return x[0]
+        return pool[-1][0]
 
     @staticmethod
     def random_vectors(length, minValue, maxValue):
@@ -194,7 +195,7 @@ def main():
 
     random.seed()
 
-    animalNum = 10
+    animalNum = 100
     animalSize = 5
 
     startX = width * fieldMin + 10 
@@ -206,13 +207,13 @@ def main():
                 for i in range(animalNum)]
 
 
-    fitAvg = width
+    fitAvg = 0
     fittest = width
-    fitAvgGoal = 50
+    fitAvgGoal = 1.0/50
     
     generationCount = 1
     end = False
-    while fitAvg > fitAvgGoal:
+    while fitAvg < fitAvgGoal:
         # Drawing movers
         for mover in movers:
             mover.draw(win)
