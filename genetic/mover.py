@@ -5,7 +5,7 @@ import random
 import numpy as np
 
 class Mover():
-    def __init__(self, x, y, radius, lifetime, goal):
+    def __init__(self, x, y, speed, radius, lifetime, numOfGenes, mutation, goal):
         self.start = np.array([x, y])
         self.circle = Circle(Point(x, y), radius)
         self.circle.setFill('black')
@@ -13,16 +13,22 @@ class Mover():
         self.goal = np.array([goal.x, goal.y])
         self.life = lifetime
         self.lifetime = lifetime
+        self.numOfGenes = numOfGenes
+        self.speed = speed
+        self.mutation = mutation
+        self.eliteCoef = 0.15
+        self.dieCoef = 0.2
+        self.reachedGoal = False
 
-        self.chromosome = Mover.random_vectors(10, -1, 1)
-        self.vel = np.array([0., 0.])
+        self.chromosome = Mover.random_vectors(numOfGenes, -speed, speed)
+        self.vel = np.array([0., 0.]) 
         self.acc = self.chromosome[0]
         self.accIndex = 0
 
     def clone(self):
-        return Mover(self.start[0], self.start[1], 
-                self.circle.getRadius(),
-                self.lifetime, Point(self.goal[0], self.goal[1]))
+        return Mover(self.start[0], self.start[1], self.speed,
+                self.circle.getRadius(), self.lifetime, self.numOfGenes, 
+                self.mutation, Point(self.goal[0], self.goal[1]))
 
     def update(self):
         self.life -= 1
@@ -35,7 +41,10 @@ class Mover():
         self.move()
 
     def fitness(self):
-        return 1.0 / np.linalg.norm(self.goal - self.position())
+        fit = 1.0 / np.linalg.norm(self.goal - self.position())
+        if self.reachedGoal:
+            fit += 1
+        return fit
 
     def position(self):
         center = self.circle.getCenter()
@@ -47,6 +56,7 @@ class Mover():
         self.life = self.lifetime
         self.alive = True
         self.vel = np.array([0., 0.])
+        self.reachedGoal = False
 
     def draw(self, win):
         self.circle.draw(win)
@@ -54,28 +64,42 @@ class Mover():
     def undraw(self):
         self.circle.undraw()
 
-    def mutate(self, chance):
-        if random.uniform(0, 1) > chance:
+    def mutate(self):
+        # random broj
+        if random.uniform(0, 1) <= self.mutation:
             return
 
-        randomGene = random.randint(
+        size = np.size(self.chromosome, 0)
+        num = int(0.01 * size)
+
+        start = random.randint(
                 0,
-                np.size(self.chromosome, 0)-1)
-        self.chromosome[randomGene][0] = \
-                random.uniform(-1, 1)
-        self.chromosome[randomGene][1] = \
-                random.uniform(-1, 1)
+                np.size(self.chromosome, 0) - num - 1)
+
+        for i in range(num):        
+            self.chromosome[start + i][0] = \
+                    random.uniform(-1, 1)
+            self.chromosome[start + i][1] = \
+                    random.uniform(-1, 1)
 
     @staticmethod
     def reproduce(movers):
+        coef = movers[0].eliteCoef
+        size = len(movers)
+        
+        elite = Mover.pick_best(movers, int(coef * size))
+
         newGeneration = []
-        for i in range(int(len(movers)/2)):
+        for i, fitness in elite:
+            newGeneration.append(movers[int(i)])
+
+        for i in range(int((len(movers) - len(elite))/2)):
             parents = Mover.selection(movers)
             child1, child2 = Mover.crossover(parents)
 
             for child in child1, child2:
                 child.reset()
-                child.mutate(0.02)
+                child.mutate()
                 newGeneration.append(child)
 
         return newGeneration
@@ -99,6 +123,22 @@ class Mover():
         return child1, child2
 
     @staticmethod
+    def pick_best(movers, num):
+        fitness = np.array(
+                [np.array([i, x.fitness()]) for i, x in enumerate(movers)])
+
+        sumFitness = sum([x.fitness() for x in movers])
+
+        # Normalization of values
+        fitness[:,1] /= sumFitness
+
+        # Sorted by normalized fitness values
+        normDesc = np.array(
+                sorted(fitness, key=lambda x: x[1], reverse=True))
+
+        return normDesc[:num]
+
+    @staticmethod
     def selection(movers):
         fitness = np.array(
                 [np.array([i, x.fitness()]) for i, x in enumerate(movers)])
@@ -111,6 +151,10 @@ class Mover():
         # Sorted by normalized fitness values
         normDesc = np.array(
                 sorted(fitness, key=lambda x: x[1], reverse=True))
+
+        worstNum = int(movers[0].dieCoef * len(movers))
+
+        normDesc[:-worstNum]
 
         # Accumulated values
         acc = itool.accumulate(normDesc[:,1])
@@ -187,11 +231,31 @@ def main():
     field.draw(win)
 
     # Draw Goal
-    goal = Point(width * 0.75, height/2)
-    goalCircle = Circle(goal, 25)
+    x = width * 0.75
+    y = height/2
+
+    radius = 25
+    goal = Point(x, y)
+    goalCircle = Circle(goal, radius)
     goal.setFill('cyan')
     goal.setOutline('black')
     goalCircle.draw(win)
+
+    goalTrigger = Rectangle(Point(goal.x - radius, goal.y - radius),
+                            Point(goal.x + radius, goal.y + radius))
+
+    # Draw Obstacles
+    obstacleNum = 1
+    obstacles = [] 
+
+    obstacles.append(Rectangle(Point(200, 0), Point(250, 300)))
+    #obstacles.append(Rectangle(Point(300, 200), Point(350, 800)))
+    obstacles.append(Rectangle(Point(350, 0), Point(400, 300)))
+    obstacles.append(Rectangle(Point(500, 200), Point(550, 800)))
+
+    for obstacle in obstacles:
+        obstacle.setFill('red')
+        obstacle.draw(win)
 
     random.seed()
 
@@ -201,9 +265,13 @@ def main():
     startX = width * fieldMin + 10 
     startY = height/2
 
-    lifetime = 100
+    lifetime = 500
+    numOfGenes = 100
+    mutation = 0.4
+    speed = 3
 
-    movers = [Mover(startX, startY, animalSize, lifetime, goal) 
+    movers = [Mover(startX, startY, speed, animalSize, 
+                    lifetime, numOfGenes, mutation, goal) 
                 for i in range(animalNum)]
 
 
@@ -213,7 +281,8 @@ def main():
     
     generationCount = 1
     end = False
-    while fitAvg < fitAvgGoal:
+    #while fitAvg < fitAvgGoal:
+    while generationCount < 500:
         # Drawing movers
         for mover in movers:
             mover.draw(win)
@@ -227,7 +296,17 @@ def main():
                 if not mover.isInside(field):
                     mover.kill()
 
-            update(30)
+                for obstacle in obstacles:
+                    if mover.isInside(obstacle):
+                        mover.kill()
+
+                if mover.isInside(goalTrigger):
+                    print('GOAL')
+                    mover.reachedGoal = True
+
+
+            update(300)
+
             anyAlive = any(map(lambda x: x.alive, movers))
 
             if win.checkKey() == 'q':
